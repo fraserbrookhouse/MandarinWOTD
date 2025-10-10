@@ -1,4 +1,4 @@
-import csv, io, os, json, hashlib, datetime, zoneinfo, urllib.request, urllib.parse, sys
+import csv, io, os, json, hashlib, datetime, re, zoneinfo, urllib.request, urllib.parse, sys
 
 # 1) Load and combine HSK lists
 rows = []
@@ -107,10 +107,76 @@ def fetch_example(word: str):
 # 4) Don’t let example lookup failures kill the build
 try:
     ex = fetch_example(entry["hanzi"])
+    if not ex:
+        ex = fetch_example_mymemory(entry["hanzi"])
     if ex:
         entry.update(ex)
 except Exception as e:
     print(f"Non-fatal example error: {e}", file=sys.stderr)
+
+def fetch_example_mymemory(word: str):
+    """
+    Fallback: use MyMemory Translation Memory to get a CN sentence with an EN translation.
+    Prefers human translations and high match scores.
+    Docs: https://mymemory.translated.net/doc/spec.php
+    """
+    base = "https://api.mymemory.translated.net/get"
+    # Ask for Chinese->English; q must be urlencoded
+    params = {
+        "q": word,
+        "langpair": "zh-CN|en-GB",   # or en-US if you prefer
+        "de": "bot@example.com",     # contact email per API etiquette (optional but nice)
+    }
+    url = base + "?" + urllib.parse.urlencode(params)
+    req = urllib.request.Request(url, headers={"User-Agent": "MandarinWOTD/1.0 (+github-actions)"})
+    try:
+        with urllib.request.urlopen(req, timeout=10) as r:
+            data = json.load(r)
+    except Exception:
+        return None
+
+    # MyMemory returns { responseData: {...}, matches: [ ... ] }
+    matches = data.get("matches") or []
+    if not isinstance(matches, list):
+        return None
+
+    # Heuristics:
+    # - Chinese side contains the exact word
+    # - Prefer non-machine (if possible): created-by != "MT"
+    # - Prefer higher "quality"/"match" score
+    def is_chinese(s):  # quick check for any CJK char
+        return bool(re.search(r"[\u4e00-\u9fff]", s or ""))
+
+    scored = []
+    for m in matches:
+        src = (m.get("segment") or "").strip()
+        tgt = (m.get("translation") or "").strip()
+        created_by = (m.get("created-by") or m.get("createdby") or "").upper()
+        mt = (m.get("machine-translation") or m.get("mt") or False)
+        match_score = float(m.get("match", 0))  # 0..1
+        quality = float(m.get("quality", 0))    # 0..100
+
+        # MyMemory sometimes flips direction; ensure src is Chinese and contains the word
+        if not (is_chinese(src) and word in src):
+            continue
+        if not tgt:
+            continue
+
+        # Score: prefer human and high quality/match
+        human_bonus = 0.1 if (created_by and created_by != "MT" and not mt) else 0.0
+        score = match_score + (quality / 100.0) * 0.5 + human_bonus
+        scored.append((score, src, tgt, created_by))
+
+    if not scored:
+        return None
+
+    scored.sort(reverse=True)
+    _, cn, en, created_by = scored[0]
+    # Light cleanup (trim multiple spaces and odd punctuation)
+    cn = re.sub(r"\s+", " ", cn).strip()
+    en = re.sub(r"\s+", " ", en).strip()
+    return {"example_cn": cn, "example_en": en, "example_source": "MyMemory"}
+
 
 # 5) Write today.json
 with open("today.json", "w", encoding="utf-8") as f:
