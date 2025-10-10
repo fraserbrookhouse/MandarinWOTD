@@ -31,3 +31,42 @@ jobs:
       - name: Build today.json
         run: |
           python tools/build_wotd.py
+
+      - name: Debug workspace
+        run: |
+          echo "PWD=$(pwd)"
+          echo "Branch ref: ${{ github.ref }}"
+          echo "Branch name: ${{ github.ref_name }}"
+          ls -la
+
+      - name: Commit and push today.json
+        env:
+          BRANCH_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          git config --global safe.directory '*'
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Make sure we’re on the right branch (esp. for workflow_dispatch / schedule)
+          git checkout "$BRANCH_NAME"
+
+          # Show the file we expect
+          ls -la today.json || true
+          echo "git status before:"
+          git status --porcelain
+
+          # Stage & commit if changed or new
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No staged changes (today.json may match current)."
+          else
+            git commit -m "Update today.json (WOTD)"
+          fi
+
+          # Push (won’t error if nothing to push)
+          git push origin "$BRANCH_NAME" || true
+
+          echo "git status after:"
+          git status --porcelain
+
