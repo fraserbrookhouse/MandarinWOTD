@@ -104,16 +104,6 @@ def fetch_example(word: str):
 
     return None
 
-# 4) Don’t let example lookup failures kill the build
-try:
-    ex = fetch_example(entry["hanzi"])
-    if not ex:
-        ex = fetch_example_mymemory(entry["hanzi"])
-    if ex:
-        entry.update(ex)
-except Exception as e:
-    print(f"Non-fatal example error: {e}", file=sys.stderr)
-
 def fetch_example_mymemory(word: str):
     """
     Fallback: use MyMemory Translation Memory to get a CN sentence with an EN translation.
@@ -177,6 +167,15 @@ def fetch_example_mymemory(word: str):
     en = re.sub(r"\s+", " ", en).strip()
     return {"example_cn": cn, "example_en": en, "example_source": "MyMemory"}
 
+# 4) Don’t let example lookup failures kill the build
+try:
+    ex = fetch_example(entry["hanzi"])
+    if not ex:
+        ex = fetch_example_mymemory(entry["hanzi"])
+    if ex:
+        entry.update(ex)
+except Exception as e:
+    print(f"Non-fatal example error: {e}", file=sys.stderr)
 
 # 5) Write today.json
 with open("today.json", "w", encoding="utf-8") as f:
