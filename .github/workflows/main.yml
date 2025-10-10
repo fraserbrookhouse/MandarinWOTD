@@ -1,0 +1,88 @@
+name: Build Mandarin WOTD JSON
+
+on:
+  schedule:
+    # Runs daily at 00:05 Europe/London (i.e., 23:05 UTC or 00:05 UTC depending on DST)
+    - cron: "5 0 * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      # HSK CSVs (chinese,pinyin,english) — we’ll combine all levels:
+      HSK_URLS: >
+        https://raw.githubusercontent.com/plaktos/hsk_csv/master/hsk1.csv
+        https://raw.githubusercontent.com/plaktos/hsk_csv/master/hsk2.csv
+        https://raw.githubusercontent.com/plaktos/hsk_csv/master/hsk3.csv
+        https://raw.githubusercontent.com/plaktos/hsk_csv/master/hsk4.csv
+        https://raw.githubusercontent.com/plaktos/hsk_csv/master/hsk5.csv
+        https://raw.githubusercontent.com/plaktos/hsk_csv/master/hsk6.csv
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Build today.json
+        run: |
+          python - << 'PY'
+          import csv, io, os, sys, json, hashlib, datetime, zoneinfo, urllib.parse
+          import urllib.request
+
+          # 1) Load and combine HSK lists (columns: chinese,pinyin,english)
+          rows = []
+          for url in os.environ["HSK_URLS"].split():
+              with urllib.request.urlopen(url) as r:
+                  data = r.read().decode("utf-8")
+              reader = csv.reader(io.StringIO(data))
+              for hanzi, pinyin, english in reader:
+                  hanzi = hanzi.strip()
+                  pinyin = pinyin.strip()
+                  english = english.strip()
+                  if hanzi and pinyin and english:
+                      rows.append({"hanzi": hanzi, "pinyin": pinyin, "definition": english})
+
+          if not rows:
+              raise SystemExit("No HSK rows loaded.")
+
+          # 2) Choose a deterministic "word of the day" in Europe/London
+          today = datetime.datetime.now(zoneinfo.ZoneInfo("Europe/London")).date()
+          daykey = today.isoformat().encode()
+          idx = int.from_bytes(hashlib.sha256(daykey).digest()[:4], "big") % len(rows)
+          entry = rows[idx]
+
+          # 3) Try to fetch a CN sentence with EN translation from Tatoeba
+          #    API docs/examples show /eng/api_v0/search with params like from,to,query,trans_* .  (beta/limited)
+          #    We'll ask for cmn (Mandarin) sentences having direct ENG translations.
+          def fetch_example(word):
+              base = "https://tatoeba.org/eng/api_v0/search"
+              params = {
+                  "from": "cmn",
+                  "to": "cmn",  # sentence language (Chinese)
+                  "query": word,
+                  "sort": "relevance",
+                  "trans_filter": "limit",
+                  "trans_link": "direct",
+                  "trans_to": "eng",   # request direct EN translations
+                  "page": 1
+              }
+              url = base + "?" + urllib.parse.urlencode(params)
+              try:
+                  with urllib.request.urlopen(url, timeout=12) as r:
+                      data = json.load(r)
+              except Exception:
+                  return None
+
+              # Shape varies; we’ll probe conservatively.
+              # Expect something like data["results"]["sentences"] list with "text" and "translations".
+              try:
+                  sentences = data.get("results", {}).get("sentences", [])
+              except AttributeError:
+                  sentences = data.get("Sentences", {}).get("items", [])  # older shape
+              for s in sentences:
+                  cn = s.get("text") or s.get("
