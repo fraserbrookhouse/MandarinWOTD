@@ -24,17 +24,52 @@ idx = int.from_bytes(hashlib.sha256(today.isoformat().encode()).digest()[:4], "b
 entry = rows[idx]
 
 # 3) Try to fetch Chinese + English example from Tatoeba — SHAPE-AGNOSTIC
+
+def _is_cjk(s: str) -> bool:
+    return bool(re.search(r"[\u4e00-\u9fff]", s or ""))
+
+def _looks_like_sentence_cn(word: str, cn: str) -> bool:
+    if not _is_cjk(cn): 
+        return False
+    cn = cn.strip()
+    if cn == word: 
+        return False
+    # Length should exceed the word by at least 2 chars
+    if len(cn) < max(len(word) + 2, 4):
+        return False
+    # Encourage sentence punctuation or spacing
+    if not re.search(r"[，。？！、；：,.?!]", cn) and " " not in cn:
+        # still allow if reasonably long (e.g., phrases)
+        if len(cn) < 6:
+            return False
+    return True
+
+def _looks_like_sentence_en(en: str) -> bool:
+    en = (en or "").strip()
+    # avoid one-word glosses
+    return len(en) >= 8
+
+def _score_pair(word: str, cn: str, en: str) -> float:
+    # Heuristic: length balance + punctuation bonus + word position variety
+    score = 0.0
+    Lc = len(cn)
+    Le = len(en)
+    score += min(Lc, 40) / 40.0
+    score += min(Le, 60) / 60.0
+    if re.search(r"[，。？！、；：,.?!]", cn):
+        score += 0.3
+    # prefer if word is inside, not only at edges
+    if 0 < cn.find(word) < len(cn) - len(word):
+        score += 0.2
+    return score
+
+# ---------------- TATOEBA ----------------
 def fetch_example(word: str):
     base = "https://tatoeba.org/eng/api_v0/search"
     params = {
-        "from": "cmn",          # Mandarin Chinese sentences
-        "to": "cmn",            # same language (we want Chinese sentences)
-        "query": word,          # search term
-        "sort": "relevance",
-        "trans_filter": "limit",
-        "trans_link": "direct", # only directly linked translations
-        "trans_to": "eng",      # ask for English translations
-        "page": 1,
+        "from": "cmn", "to": "cmn", "query": word,
+        "sort": "relevance", "trans_filter": "limit",
+        "trans_link": "direct", "trans_to": "eng", "page": 1,
     }
     url = base + "?" + urllib.parse.urlencode(params)
     req = urllib.request.Request(url, headers={"User-Agent": "MandarinWOTD/1.0 (+github-actions)"})
@@ -42,130 +77,95 @@ def fetch_example(word: str):
         with urllib.request.urlopen(req, timeout=12) as r:
             data = json.load(r)
     except Exception as e:
-        print(f"Example lookup failed: {e}", file=sys.stderr)
+        log(f"Tatoeba lookup failed: {e}")
         return None
 
-    # --- Normalize the response into a list of sentence items ---
+    # normalize -> items
     items = []
     if isinstance(data, list):
-        # Some responses are just a list of sentence items
         items = data
     elif isinstance(data, dict):
-        # Try several known shapes
-        for path in (
-            ("results", "sentences"),
-            ("Sentences", "items"),
-            ("items",),
-            ("data",),  # just in case
-        ):
-            cur = data
-            ok = True
-            for key in path:
-                if isinstance(cur, dict) and key in cur:
-                    cur = cur[key]
+        for path in (("results","sentences"), ("Sentences","items"), ("items",), ("data",)):
+            cur, ok = data, True
+            for k in path:
+                if isinstance(cur, dict) and k in cur:
+                    cur = cur[k]
                 else:
-                    ok = False
-                    break
+                    ok = False; break
             if ok and isinstance(cur, list):
-                items = cur
-                break
+                items = cur; break
 
-    if not isinstance(items, list):
-        return None
+    best = None
+    best_score = -1.0
 
-    # --- Pick the first item that has an English translation ---
     for s in items:
-        if not isinstance(s, dict):
+        if not isinstance(s, dict): 
             continue
         cn = s.get("text") or s.get("sentence") or ""
-        if not cn:
+        if not _looks_like_sentence_cn(word, cn):
             continue
 
         trans = s.get("translations") or s.get("Translations") or []
-        # Normalize translations into a flat list of dicts
+        # flatten translations
         flat = []
         if isinstance(trans, dict):
             for v in trans.values():
-                if isinstance(v, list):
-                    flat.extend(v)
-                elif isinstance(v, dict):
-                    flat.append(v)
+                if isinstance(v, list): flat.extend(v)
+                elif isinstance(v, dict): flat.append(v)
         elif isinstance(trans, list):
             flat = trans
 
         for t in flat:
-            if not isinstance(t, dict):
+            if not isinstance(t, dict): 
                 continue
             lang = (t.get("lang") or t.get("language") or "")
-            if str(lang).startswith("eng"):
-                en = t.get("text") or t.get("sentence") or ""
-                if en:
-                    return {"example_cn": cn, "example_en": en}
+            if not str(lang).startswith("eng"):
+                continue
+            en = t.get("text") or t.get("sentence") or ""
+            if not _looks_like_sentence_en(en):
+                continue
+            sc = _score_pair(word, cn, en)
+            if sc > best_score:
+                best_score, best = sc, {"example_cn": cn.strip(), "example_en": en.strip(), "example_source": "Tatoeba"}
 
-    return None
+    return best
 
+# ---------------- MYMEMORY (fallback) ----------------
 def fetch_example_mymemory(word: str):
-    """
-    Fallback: use MyMemory Translation Memory to get a CN sentence with an EN translation.
-    Prefers human translations and high match scores.
-    Docs: https://mymemory.translated.net/doc/spec.php
-    """
     base = "https://api.mymemory.translated.net/get"
-    # Ask for Chinese->English; q must be urlencoded
-    params = {
-        "q": word,
-        "langpair": "zh-CN|en-GB",   # or en-US if you prefer
-        "de": "bot@example.com",     # contact email per API etiquette (optional but nice)
-    }
+    params = {"q": word, "langpair": "zh-CN|en-GB", "de": "bot@example.com"}
     url = base + "?" + urllib.parse.urlencode(params)
     req = urllib.request.Request(url, headers={"User-Agent": "MandarinWOTD/1.0 (+github-actions)"})
     try:
         with urllib.request.urlopen(req, timeout=10) as r:
             data = json.load(r)
-    except Exception:
+    except Exception as e:
+        log(f"MyMemory lookup failed: {e}")
         return None
 
-    # MyMemory returns { responseData: {...}, matches: [ ... ] }
     matches = data.get("matches") or []
     if not isinstance(matches, list):
         return None
 
-    # Heuristics:
-    # - Chinese side contains the exact word
-    # - Prefer non-machine (if possible): created-by != "MT"
-    # - Prefer higher "quality"/"match" score
-    def is_chinese(s):  # quick check for any CJK char
-        return bool(re.search(r"[\u4e00-\u9fff]", s or ""))
+    best = None
+    best_score = -1.0
 
-    scored = []
     for m in matches:
-        src = (m.get("segment") or "").strip()
-        tgt = (m.get("translation") or "").strip()
+        cn = (m.get("segment") or "").strip()
+        en = (m.get("translation") or "").strip()
+        if not (_looks_like_sentence_cn(word, cn) and _looks_like_sentence_en(en)):
+            continue
+        sc = _score_pair(word, cn, en)
+        # small bonus if they say it's human
         created_by = (m.get("created-by") or m.get("createdby") or "").upper()
         mt = (m.get("machine-translation") or m.get("mt") or False)
-        match_score = float(m.get("match", 0))  # 0..1
-        quality = float(m.get("quality", 0))    # 0..100
+        if created_by and created_by != "MT" and not mt:
+            sc += 0.1
+        if sc > best_score:
+            best_score, best = sc, {"example_cn": cn, "example_en": en, "example_source": "MyMemory"}
 
-        # MyMemory sometimes flips direction; ensure src is Chinese and contains the word
-        if not (is_chinese(src) and word in src):
-            continue
-        if not tgt:
-            continue
+    return best
 
-        # Score: prefer human and high quality/match
-        human_bonus = 0.1 if (created_by and created_by != "MT" and not mt) else 0.0
-        score = match_score + (quality / 100.0) * 0.5 + human_bonus
-        scored.append((score, src, tgt, created_by))
-
-    if not scored:
-        return None
-
-    scored.sort(reverse=True)
-    _, cn, en, created_by = scored[0]
-    # Light cleanup (trim multiple spaces and odd punctuation)
-    cn = re.sub(r"\s+", " ", cn).strip()
-    en = re.sub(r"\s+", " ", en).strip()
-    return {"example_cn": cn, "example_en": en, "example_source": "MyMemory"}
 
 # 4) Don’t let example lookup failures kill the build
 try:
