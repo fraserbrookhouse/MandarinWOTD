@@ -1,5 +1,8 @@
 {
-  "hanzi": "机关",
-  "pinyin": "jī guān",
-  "definition": "mechanism"
+  "hanzi": "瞎",
+  "pinyin": "xiā",
+  "definition": "blind",
+  "example_cn": "<g id=\"1813\">瞎</g><g id=\"1814\">说</g> <g id=\"1815\">怎么可能</g>",
+  "example_en": "<g id=\"1813\"></g><g id=\"1814\">Nonsense, how could that be</g> <g id=\"1815\"></g>",
+  "example_source": "MyMemory"
 }
