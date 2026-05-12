@@ -51,10 +51,9 @@ jobs:
             roughly 8–18 Chinese characters. Provide a faithful (not
             word-for-word) English translation.
 
-            Edit today.json to add three new fields after the existing ones:
+            Edit today.json to add two new fields after the existing ones:
               "example_cn": <the Chinese sentence>
               "example_en": <the English translation>
-              "example_source": "Claude Code (OAuth)"
 
             Preserve all existing fields exactly. Output must be valid JSON,
             indented with 2 spaces, with a trailing newline.

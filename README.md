@@ -19,8 +19,7 @@ workflow runs.
   "hsk_level": 3,
   "date": "2026-05-12",
   "example_cn": "我喜欢这件衬衫。",
-  "example_en": "I like this shirt.",
-  "example_source": "Claude Code (OAuth)"
+  "example_en": "I like this shirt."
 }
 ```
 
@@ -33,7 +32,6 @@ workflow runs.
 | `date`           | yes            | ISO date in Europe/London used to pick the word.        |
 | `example_cn`     | best-effort    | Example sentence in Chinese, level-appropriate.         |
 | `example_en`     | best-effort    | Natural English translation of the example.             |
-| `example_source` | best-effort    | `Claude Code (OAuth)`.                                  |
 
 Example fields are absent if `CLAUDE_CODE_OAUTH_TOKEN` is unset or the
 Claude Code Action step errors — the workflow continues and commits
@@ -67,9 +65,9 @@ A second workflow step then runs
 authenticated with a `CLAUDE_CODE_OAUTH_TOKEN` so usage bills against the
 repo owner's Claude Pro/Max subscription rather than a separately-billed
 API key. Claude reads `today.json`, generates one HSK-appropriate example
-sentence using the chosen word, and edits the file to add `example_cn`,
-`example_en`, and `example_source` in place. The existing commit step
-then pushes the populated file.
+sentence using the chosen word, and edits the file to add `example_cn`
+and `example_en` in place. The existing commit step then pushes the
+populated file.
 
 ## Schedule
 
@@ -117,9 +115,9 @@ Action step in CI. To populate them locally, use the Claude Code CLI
 yourself, e.g.:
 
 ```bash
-claude --print "Read ./today.json, add example_cn, example_en, and \
-example_source='Claude Code (OAuth)' fields with one HSK-appropriate \
-example sentence using the hanzi, then write the file back."
+claude --print "Read ./today.json, add example_cn and example_en fields \
+with one HSK-appropriate example sentence using the hanzi, then write \
+the file back."
 ```
 
 Requires Python 3.9+ (for `zoneinfo`). The Python script itself has no

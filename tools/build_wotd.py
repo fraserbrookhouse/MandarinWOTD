@@ -37,7 +37,7 @@ else:
 
 # 3) Write the base today.json. The example sentence is added by the
 #    Claude Code Action step in the workflow, which reads this file and
-#    writes example_cn / example_en / example_source back into it.
+#    writes example_cn / example_en back into it.
 with open("today.json", "w", encoding="utf-8") as f:
     json.dump(entry, f, ensure_ascii=False, indent=2)
 
