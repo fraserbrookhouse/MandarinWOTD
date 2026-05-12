@@ -2,7 +2,9 @@ name: Build Mandarin WOTD JSON
 
 on:
   schedule:
-    # Runs daily at 00:05 Europe/London (i.e., 23:05 UTC or 00:05 UTC depending on DST)
+    # GitHub Actions cron is UTC: 00:05 UTC == 00:05 GMT in winter, 01:05 BST
+    # in summer. The word itself is keyed off Europe/London date in
+    # tools/build_wotd.py, so a single UTC cron just past midnight is enough.
     - cron: "5 0 * * *"
   workflow_dispatch: {}
 
