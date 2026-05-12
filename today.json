@@ -3,5 +3,8 @@
   "pinyin": "chèn shān",
   "definition": "shirt",
   "hsk_level": 3,
-  "date": "2026-05-12"
+  "date": "2026-05-12",
+  "example_cn": "他穿了一件白色的衬衫去上班。",
+  "example_en": "He wore a white shirt to work.",
+  "example_source": "Claude Code (OAuth)"
 }
