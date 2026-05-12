@@ -30,9 +30,33 @@ jobs:
         with:
           python-version: "3.x"
 
-      - name: Build today.json
+      - name: Build base today.json
         run: |
           python tools/build_wotd.py
+
+      - name: Add example sentence via Claude Code (OAuth)
+        uses: anthropics/claude-code-base-action@beta
+        continue-on-error: true
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          allowed_tools: "Read,Edit,Write"
+          max_turns: "3"
+          prompt: |
+            Read ./today.json. It contains a Mandarin word-of-the-day with
+            fields: hanzi, pinyin, definition, hsk_level, date.
+
+            Write ONE natural Chinese example sentence that uses the EXACT
+            hanzi, with vocabulary and grammar at or below the entry's
+            hsk_level so a learner studying that word can read it. Aim for
+            roughly 8–18 Chinese characters. Provide a faithful (not
+            word-for-word) English translation.
+
+            Edit today.json to add two new fields after the existing ones:
+              "example_cn": <the Chinese sentence>
+              "example_en": <the English translation>
+
+            Preserve all existing fields exactly. Output must be valid JSON,
+            indented with 2 spaces, with a trailing newline.
 
       - name: Debug workspace
         run: |
