@@ -1,10 +1,9 @@
 {
-  "hanzi": "衬衫",
-  "pinyin": "chèn shān",
-  "definition": "shirt",
-  "hsk_level": 3,
-  "date": "2026-05-12",
-  "example_cn": "他穿了一件白色的衬衫去上班。",
-  "example_en": "He wore a white shirt to work.",
-  "example_source": "Claude Code (OAuth)"
+  "hanzi": "手机",
+  "pinyin": "shǒu jī",
+  "definition": "cell phone",
+  "hsk_level": 2,
+  "date": "2026-05-13",
+  "example_cn": "我的手机没电了。",
+  "example_en": "My phone ran out of battery."
 }
